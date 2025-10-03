@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartAPI Stock Platform</title>
+    <meta name="description" content="Professional stock trading platform with Angel One SmartAPI integration">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/components.css">
+    <link rel="stylesheet" href="/css/responsive.css">
+    
+    <!-- Chart.js for stock charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Loading SmartAPI Platform...</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-chart-line"></i>
+                <span>SmartAPI</span>
+            </div>
+            
+            <div class="nav-menu" id="navMenu">
+                <a href="#dashboard" class="nav-link active" data-section="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="#portfolio" class="nav-link" data-section="portfolio">
+                    <i class="fas fa-briefcase"></i>
+                    <span>Portfolio</span>
+                </a>
+                <a href="#market" class="nav-link" data-section="market">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Market</span>
+                </a>
+                <a href="#orders" class="nav-link" data-section="orders">
+                    <i class="fas fa-list-alt"></i>
+                    <span>Orders</span>
+                </a>
+                <a href="#watchlist" class="nav-link" data-section="watchlist">
+                    <i class="fas fa-eye"></i>
+                    <span>Watchlist</span>
+                </a>
+            </div>
+            
+            <div class="nav-actions">
+                <div class="user-menu">
+                    <button class="user-btn" id="userBtn">
+                        <i class="fas fa-user-circle"></i>
+                        <span id="userName">User</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="user-dropdown" id="userDropdown">
+                        <a href="#profile" data-section="profile">
+                            <i class="fas fa-user"></i>
+                            Profile
+                        </a>
+                        <a href="#settings" data-section="settings">
+                            <i class="fas fa-cog"></i>
+                            Settings
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a href="#" id="logoutBtn">
+                            <i class="fas fa-sign-out-alt"></i>
+                            Logout
+                        </a>
+                    </div>
+                </div>
+                
+                <button class="mobile-menu-btn" id="mobileMenuBtn">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Login Section -->
+        <section id="loginSection" class="auth-section">
+            <div class="auth-container">
+                <div class="auth-card">
+                    <div class="auth-header">
+                        <div class="auth-logo">
+                            <i class="fas fa-chart-line"></i>
+                            <h1>SmartAPI Platform</h1>
+                        </div>
+                        <p>Professional stock trading with Angel One integration</p>
+                    </div>
+                    
+                    <div class="auth-tabs">
+                        <button class="tab-btn active" data-tab="login">Login</button>
+                        <button class="tab-btn" data-tab="register">Register</button>
+                    </div>
+                    
+                    <!-- Login Form -->
+                    <form id="loginForm" class="auth-form">
+                        <div class="form-group">
+                            <label for="loginEmail">Email</label>
+                            <input type="email" id="loginEmail" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loginPassword">Password</label>
+                            <input type="password" id="loginPassword" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">
+                            <i class="fas fa-sign-in-alt"></i>
+                            Login
+                        </button>
+                    </form>
+                    
+                    <!-- Register Form -->
+                    <form id="registerForm" class="auth-form hidden">
+                        <div class="form-group">
+                            <label for="registerName">Full Name</label>
+                            <input type="text" id="registerName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerEmail">Email</label>
+                            <input type="email" id="registerEmail" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerPhone">Phone</label>
+                            <input type="tel" id="registerPhone" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerClientCode">Angel One Client Code</label>
+                            <input type="text" id="registerClientCode" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="registerPassword">Password</label>
+                            <input type="password" id="registerPassword" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full">
+                            <i class="fas fa-user-plus"></i>
+                            Register
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- SmartAPI Login Modal -->
+        <div id="smartApiModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Connect to Angel One</h3>
+                    <button class="modal-close" id="smartApiModalClose">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <form id="smartApiForm" class="modal-form">
+                    <div class="form-group">
+                        <label for="smartApiPassword">Trading Password</label>
+                        <input type="password" id="smartApiPassword" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="smartApiTotp">TOTP (6-digit code)</label>
+                        <input type="text" id="smartApiTotp" maxlength="6" required>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="smartApiCancel">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-link"></i>
+                            Connect
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard Section -->
+        <section id="dashboardSection" class="content-section hidden">
+            <div class="section-header">
+                <h2>Dashboard</h2>
+                <div class="header-actions">
+                    <button class="btn btn-outline" id="refreshDashboard">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+            
+            <div class="dashboard-grid">
+                <!-- Portfolio Summary Cards -->
+                <div class="card portfolio-summary">
+                    <div class="card-header">
+                        <h3>Portfolio Summary</h3>
+                        <div class="card-actions">
+                            <button class="btn btn-sm btn-primary" id="syncPortfolio">
+                                <i class="fas fa-sync"></i>
+                                Sync
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="summary-stats">
+                            <div class="stat-item">
+                                <div class="stat-label">Total Value</div>
+                                <div class="stat-value" id="totalValue">₹0</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">P&L</div>
+                                <div class="stat-value" id="totalPnL">₹0</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Holdings</div>
+                                <div class="stat-value" id="totalHoldings">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Market Status -->
+                <div class="card market-status">
+                    <div class="card-header">
+                        <h3>Market Status</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="market-info">
+                            <div class="status-indicator" id="marketStatus">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Loading...</span>
+                            </div>
+                            <div class="market-time" id="marketTime">--:--</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div class="card quick-actions">
+                    <div class="card-header">
+                        <h3>Quick Actions</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="action-buttons">
+                            <button class="action-btn" data-action="buy">
+                                <i class="fas fa-plus-circle"></i>
+                                <span>Buy</span>
+                            </button>
+                            <button class="action-btn" data-action="sell">
+                                <i class="fas fa-minus-circle"></i>
+                                <span>Sell</span>
+                            </button>
+                            <button class="action-btn" data-action="watchlist">
+                                <i class="fas fa-eye"></i>
+                                <span>Watchlist</span>
+                            </button>
+                            <button class="action-btn" data-action="orders">
+                                <i class="fas fa-list"></i>
+                                <span>Orders</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Orders -->
+                <div class="card recent-orders">
+                    <div class="card-header">
+                        <h3>Recent Orders</h3>
+                        <a href="#orders" class="view-all">View All</a>
+                    </div>
+                    <div class="card-content">
+                        <div class="orders-list" id="recentOrdersList">
+                            <div class="empty-state">
+                                <i class="fas fa-inbox"></i>
+                                <p>No recent orders</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Top Performers -->
+                <div class="card top-performers">
+                    <div class="card-header">
+                        <h3>Top Performers</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="performers-list" id="topPerformersList">
+                            <div class="empty-state">
+                                <i class="fas fa-chart-line"></i>
+                                <p>No holdings data</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Other sections will be added in separate files -->
+        <div id="portfolioSection" class="content-section hidden"></div>
+        <div id="marketSection" class="content-section hidden"></div>
+        <div id="ordersSection" class="content-section hidden"></div>
+        <div id="watchlistSection" class="content-section hidden"></div>
+        <div id="profileSection" class="content-section hidden"></div>
+        <div id="settingsSection" class="content-section hidden"></div>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="/js/config.js"></script>
+    <script src="/js/utils.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/dashboard.js"></script>
+    <script src="/js/portfolio.js"></script>
+    <script src="/js/market.js"></script>
+    <script src="/js/orders.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

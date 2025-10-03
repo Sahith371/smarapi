@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: smartapi-stock-platform
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRE
+        value: 7d
+      - key: SMART_API_KEY
+        sync: false
+      - key: SMART_API_SECRET
+        sync: false
+      - key: SMART_API_CLIENT_CODE
+        sync: false
+      - key: SMART_API_REDIRECT_URL
+        value: https://smartapi-stock-platform.onrender.com/callback
+      - key: SMART_API_BASE_URL
+        value: https://apiconnect.angelbroking.com
+      - key: FRONTEND_URL
+        value: https://smartapi-stock-platform.onrender.com
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      - key: WS_PORT
+        value: 10001
