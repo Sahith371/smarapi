@@ -3,8 +3,12 @@ const User = require('../models/User');
 const Portfolio = require('../models/Portfolio');
 const Order = require('../models/Order');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Apply authentication middleware to all routes
+router.use(authenticateToken);
 
 // @desc    Get user dashboard data
 // @route   GET /api/user/dashboard

@@ -29,10 +29,15 @@ class ApiService {
     setupInterceptors() {
         // Add auth token to requests
         this.addRequestInterceptor((config) => {
+            // Ensure we have the latest token
+            this.updateTokens();
+            
+            // Add Authorization header if token exists
             if (this.token) {
                 config.headers = config.headers || {};
                 config.headers.Authorization = `Bearer ${this.token}`;
             }
+            
             return config;
         });
         
@@ -40,16 +45,34 @@ class ApiService {
         this.addResponseInterceptor(
             (response) => response,
             async (error) => {
-                if (error.status === 401 && this.refreshToken) {
+                const originalRequest = error.config;
+                
+                // If error is 401 and we haven't already tried to refresh the token
+                if (error.status === 401 && this.refreshToken && !originalRequest._retry) {
                     try {
+                        // Mark the request as retried
+                        originalRequest._retry = true;
+                        
+                        // Try to refresh the token
                         await this.refreshAccessToken();
-                        // Retry original request
-                        return this.request(error.config);
+                        
+                        // Update the Authorization header with the new token
+                        originalRequest.headers.Authorization = `Bearer ${this.token}`;
+                        
+                        // Retry the original request
+                        return this.request(originalRequest);
                     } catch (refreshError) {
+                        console.error('Token refresh failed:', refreshError);
                         this.handleAuthError();
                         throw refreshError;
                     }
                 }
+                
+                // If we've already tried to refresh the token or there's no refresh token
+                if (error.status === 401) {
+                    this.handleAuthError();
+                }
+                
                 throw error;
             }
         );
@@ -263,13 +286,11 @@ class ApiService {
             const data = await response.json();
             
             if (data.token) {
-                this.token = data.token;
-                Utils.storage.set(CONFIG.STORAGE.TOKEN, this.token);
+                this.setToken(data.token);
             }
             
             if (data.refreshToken) {
-                this.refreshToken = data.refreshToken;
-                Utils.storage.set(CONFIG.STORAGE.REFRESH_TOKEN, this.refreshToken);
+                this.setRefreshToken(data.refreshToken);
             }
             
             return data;
@@ -334,133 +355,12 @@ class ApiService {
         return response.data;
     }
     
-    async smartApiLogin(credentials) {
-        const response = await this.post(CONFIG.API.ENDPOINTS.SMARTAPI_LOGIN, credentials);
-        return response.data;
-    }
-    
-    async getSmartApiStatus() {
-        const response = await this.get(CONFIG.API.ENDPOINTS.SMARTAPI_STATUS);
-        return response.data;
-    }
-    
-    // Dashboard API methods
     async getDashboard() {
         const response = await this.get(CONFIG.API.ENDPOINTS.DASHBOARD);
         return response.data;
     }
     
-    // Portfolio API methods
-    async getPortfolio() {
-        const response = await this.get(CONFIG.API.ENDPOINTS.PORTFOLIO);
-        return response.data;
-    }
-    
-    async syncPortfolio() {
-        const response = await this.post(CONFIG.API.ENDPOINTS.PORTFOLIO_SYNC);
-        return response.data;
-    }
-    
-    async updatePortfolioPrices() {
-        const response = await this.post(CONFIG.API.ENDPOINTS.PORTFOLIO_UPDATE_PRICES);
-        return response.data;
-    }
-    
-    async getPortfolioAnalytics() {
-        const response = await this.get(CONFIG.API.ENDPOINTS.PORTFOLIO_ANALYTICS);
-        return response.data;
-    }
-    
-    // Market API methods
-    async searchInstruments(query, exchange = 'NSE') {
-        const response = await this.get(CONFIG.API.ENDPOINTS.MARKET_SEARCH, { q: query, exchange });
-        return response.data;
-    }
-    
-    async getLTP(instruments) {
-        const response = await this.post(CONFIG.API.ENDPOINTS.MARKET_LTP, { instruments });
-        return response.data;
-    }
-    
-    async getHistoricalData(exchange, symbolToken, options = {}) {
-        const response = await this.get(
-            `${CONFIG.API.ENDPOINTS.MARKET_HISTORICAL}/${exchange}/${symbolToken}`,
-            options
-        );
-        return response.data;
-    }
-    
-    async getMarketStatus() {
-        const response = await this.get(CONFIG.API.ENDPOINTS.MARKET_STATUS);
-        return response.data;
-    }
-    
-    async getPopularStocks(category = 'nifty50', exchange = 'NSE') {
-        const response = await this.get(CONFIG.API.ENDPOINTS.MARKET_POPULAR, { category, exchange });
-        return response.data;
-    }
-    
-    async getMarketMovers(type = 'gainers', exchange = 'NSE', limit = 10) {
-        const response = await this.get(CONFIG.API.ENDPOINTS.MARKET_MOVERS, { type, exchange, limit });
-        return response.data;
-    }
-    
-    // Orders API methods
-    async getOrders(params = {}) {
-        const response = await this.get(CONFIG.API.ENDPOINTS.ORDERS, params);
-        return response.data;
-    }
-    
-    async placeOrder(orderData) {
-        const response = await this.post(CONFIG.API.ENDPOINTS.ORDERS, orderData);
-        return response.data;
-    }
-    
-    async modifyOrder(orderId, orderData) {
-        const response = await this.put(`${CONFIG.API.ENDPOINTS.ORDERS}/${orderId}`, orderData);
-        return response.data;
-    }
-    
-    async cancelOrder(orderId) {
-        const response = await this.delete(`${CONFIG.API.ENDPOINTS.ORDERS}/${orderId}`);
-        return response.data;
-    }
-    
-    async syncOrders() {
-        const response = await this.post(CONFIG.API.ENDPOINTS.ORDERS_SYNC);
-        return response.data;
-    }
-    
-    async getOrderStats(params = {}) {
-        const response = await this.get(CONFIG.API.ENDPOINTS.ORDERS_STATS, params);
-        return response.data;
-    }
-    
-    // User API methods
-    async updateProfile(profileData) {
-        const response = await this.put(CONFIG.API.ENDPOINTS.PROFILE, profileData);
-        return response.data;
-    }
-    
-    async getPreferences() {
-        const response = await this.get(CONFIG.API.ENDPOINTS.PREFERENCES);
-        return response.data;
-    }
-    
-    async updatePreferences(preferences) {
-        const response = await this.put(CONFIG.API.ENDPOINTS.PREFERENCES, { preferences });
-        return response.data;
-    }
-    
-    async getUserActivity(params = {}) {
-        const response = await this.get(CONFIG.API.ENDPOINTS.ACTIVITY, params);
-        return response.data;
-    }
-    
-    async getUserStats(params = {}) {
-        const response = await this.get(CONFIG.API.ENDPOINTS.STATS, params);
-        return response.data;
-    }
+    // Add other API methods as needed...
 }
 
 // Create global API instance
