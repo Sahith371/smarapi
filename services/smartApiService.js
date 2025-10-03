@@ -453,14 +453,11 @@ class SmartApiService {
         message: 'Logout failed'
       };
     }
-  }
-}
 
   // Handle OAuth callback and exchange authorization code for tokens
   async handleOAuthCallback(authCode) {
     try {
       const tokenUrl = `${this.baseURL}/rest/auth/angelbroking/jwt/v1/generateTokens`;
-      
       // Prepare the request payload
       const payload = {
         clientcode: this.clientCode,
