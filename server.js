@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const path = require('path');   // ❌ MISSING earlier
 require('dotenv').config();
 
 // Import routes
@@ -107,7 +108,7 @@ mongoose.connect(process.env.MONGO_URI, {
   
   // Start server
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🌐 Local: http://localhost:${PORT}`);
     console.log(`📊 SmartAPI Stock Platform - Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 })
