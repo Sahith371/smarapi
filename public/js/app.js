@@ -222,8 +222,8 @@ class SmartApiApp {
             navbar.style.display = 'block';
         }
         
-        // Show dashboard by default
-        this.navigateToSection('dashboard');
+        // Initialize UI components for the newly authenticated user
+        this.initializeUI();
     }
     
     /**
@@ -573,6 +573,24 @@ class SmartApiApp {
         return this.isAuthenticated;
     }
     
+    /**
+     * Set current user
+     */
+    setCurrentUser(user) {
+        this.currentUser = user;
+        this.isAuthenticated = true;
+        Utils.storage.set(CONFIG.STORAGE.USER, user);
+    }
+
+    /**
+     * Initialize dashboard after login
+     */
+    async initializeDashboard() {
+        this.updateUserInfo();
+        await this.loadDashboard();
+        this.setupRefreshIntervals();
+    }
+
     /**
      * Get current section
      */

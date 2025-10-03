@@ -205,16 +205,21 @@ class AuthManager {
             if (response.success) {
                 Toast.show(CONFIG.SUCCESS.LOGIN, 'success');
                 
+                // Store tokens and user data
+                API.setToken(response.data.data.token);
+                API.setRefreshToken(response.data.data.refreshToken);
+                window.App.setCurrentUser(response.data.data.user);
+
                 // Check if SmartAPI connection is needed
-                if (!response.data.user.hasSmartApiToken) {
+                if (!response.data.data.user.hasSmartApiToken) {
                     setTimeout(() => {
                         this.showSmartApiModal();
                     }, 1000);
                 }
-                
-                // Redirect to main app
+
+                // Initialize the main application view
                 window.App.showMainApp();
-                window.App.currentUser = response.data.user;
+                window.App.initializeDashboard(); // Fetch data without reloading
                 
             } else {
                 this.showFormError(response.message || 'Login failed');
@@ -257,14 +262,18 @@ class AuthManager {
             if (response.success) {
                 Toast.show(CONFIG.SUCCESS.REGISTER, 'success');
                 
+                // Store tokens and user data
+                API.setToken(response.data.data.token);
+                API.setRefreshToken(response.data.data.refreshToken);
+                window.App.setCurrentUser(response.data.data.user);
+
                 // Show SmartAPI connection modal
                 setTimeout(() => {
                     this.showSmartApiModal();
                 }, 1000);
-                
-                // Redirect to main app
+
+                // Initialize the main application view
                 window.App.showMainApp();
-                window.App.currentUser = response.data.user;
                 
             } else {
                 this.showFormError(response.message || 'Registration failed');
