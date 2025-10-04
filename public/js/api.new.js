@@ -38,6 +38,14 @@ class ApiService {
                 config.headers.Authorization = `Bearer ${this.token}`;
             }
             
+            // Add content type if not set
+            if (!config.headers['Content-Type']) {
+                config.headers['Content-Type'] = 'application/json';
+            }
+            
+            // Add credentials for cookies
+            config.credentials = 'include';
+            
             return config;
         });
         
@@ -64,6 +72,12 @@ class ApiService {
                     } catch (refreshError) {
                         console.error('Token refresh failed:', refreshError);
                         this.handleAuthError();
+                        
+                        // Redirect to login page on auth error
+                        if (window.location.pathname !== '/login') {
+                            window.location.href = '/login';
+                        }
+                        
                         throw refreshError;
                     }
                 }
@@ -71,6 +85,17 @@ class ApiService {
                 // If we've already tried to refresh the token or there's no refresh token
                 if (error.status === 401) {
                     this.handleAuthError();
+                    
+                    // Redirect to login page on auth error
+                    if (window.location.pathname !== '/login') {
+                        window.location.href = '/login';
+                    }
+                }
+                
+                // Handle network errors
+                if (!error.status) {
+                    console.error('Network error:', error);
+                    // You might want to show a network error message to the user
                 }
                 
                 throw error;
@@ -253,13 +278,24 @@ class ApiService {
     }
     
     /**
-     * Clear tokens
+     * Handle authentication error
      */
-    clearTokens() {
+    handleAuthError() {
         this.token = null;
         this.refreshToken = null;
+        
+        // Clear storage
         Utils.storage.remove(CONFIG.STORAGE.TOKEN);
         Utils.storage.remove(CONFIG.STORAGE.REFRESH_TOKEN);
+        
+        // Clear localStorage (for backward compatibility)
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        // Redirect to login if not already there
+        if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+        }
     }
     
     /**
@@ -267,31 +303,19 @@ class ApiService {
      */
     async refreshAccessToken() {
         try {
-            const response = await fetch(`${this.baseURL}/api/auth/refresh-token`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    refreshToken: this.refreshToken
-                }),
-                credentials: 'include' // Ensure cookies are sent with the request
+            const response = await makeRequest('POST', '/auth/refresh-token', {
+                refreshToken: this.refreshToken
             });
             
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.message || 'Failed to refresh token');
+            if (response.data.token) {
+                this.setToken(response.data.token);
             }
             
-            const data = await response.json();
-            
-            if (data.token) {
-                this.setToken(data.token);
+            if (response.data.refreshToken) {
+                this.setRefreshToken(response.data.refreshToken);
             }
             
-            if (data.refreshToken) {
-                this.setRefreshToken(data.refreshToken);
-            }
+            return response.data;
             
             return data;
         } catch (error) {
