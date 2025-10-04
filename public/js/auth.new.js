@@ -83,11 +83,17 @@ class AuthManager {
     /**
      * Handle login form submission
      */
-    async handleLogin() {
+    async handleLogin(e) {
+        // Prevent default form submission
+        if (e) e.preventDefault();
+        
         if (this.isLoading) return;
         
-        const email = document.getElementById('loginEmail').value.trim();
-        const password = document.getElementById('loginPassword').value;
+        // Get form values
+        const email = document.getElementById('loginEmail')?.value?.trim() || '';
+        const password = document.getElementById('loginPassword')?.value || '';
+        
+        console.log('Attempting login with:', { email });
         
         // Basic validation
         if (!email || !password) {
@@ -95,58 +101,91 @@ class AuthManager {
             return;
         }
         
+        // Show loading state
+        const loginButton = document.getElementById('loginButton');
+        const originalButtonText = loginButton?.innerHTML;
+        
+        if (loginButton) {
+            loginButton.disabled = true;
+            loginButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+        }
+        
         this.setLoading(true);
         
         try {
-            const response = await fetch('/api/auth/login', {
+            // Use full URL for the API endpoint with 127.0.0.1 instead of localhost
+            const response = await fetch('http://127.0.0.1:10000/api/auth/login', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
-                credentials: 'include',
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({ 
+                    email: email,
+                    password: password
+                }),
+                credentials: 'include' // Changed to 'include' for CORS with credentials
             });
-            
-            const data = await response.json();
-            
+
+            // Check if response is OK before parsing JSON
             if (!response.ok) {
-                throw new Error(data.message || 'Login failed');
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || 'Login failed. Please check your credentials.');
             }
-            
-            if (!data.token) {
-                throw new Error('No authentication token received');
+
+            const data = await response.json();
+            console.log('Login response:', data);
+
+            // Store tokens and user data
+            if (data.data?.token) {
+                localStorage.setItem('token', data.data.token);
+                if (data.data.refreshToken) {
+                    localStorage.setItem('refreshToken', data.data.refreshToken);
+                }
+                if (data.data.user) {
+                    localStorage.setItem('user', JSON.stringify(data.data.user));
+                }
+                
+                console.log('Login successful, redirecting to dashboard...');
+                this.showToast('Login successful!', 'success');
+                
+                // Small delay to show the success message before redirect
+                setTimeout(() => {
+                    window.location.href = '/dashboard';
+                }, 500);
+            } else {
+                throw new Error('Invalid response from server. Please try again.');
             }
-            
-            // Store authentication data
-            this.storeAuthData(data);
-            
-            // Show success message
-            this.showToast('Login successful!', 'success');
-            
-            // Redirect to dashboard after a short delay
-            setTimeout(() => {
-                window.location.href = '/dashboard';
-            }, 1000);
             
         } catch (error) {
             console.error('Login error:', error);
-            this.showToast(error.message || 'Login failed. Please try again.', 'error');
+            this.showToast(
+                error.message || 'Login failed. Please check your credentials and try again.', 
+                'error'
+            );
         } finally {
             this.setLoading(false);
+            const loginButton = document.getElementById('loginButton');
+            if (loginButton) {
+                loginButton.disabled = false;
+                loginButton.innerHTML = 'Login';
+            }
         }
     }
     
     /**
      * Handle registration form submission
      */
-    async handleRegister() {
+    async handleRegister(e) {
+        if (e) e.preventDefault();
+        
         if (this.isLoading) return;
         
-        const name = document.getElementById('registerName').value.trim();
-        const email = document.getElementById('registerEmail').value.trim();
-        const phone = document.getElementById('registerPhone').value.trim();
-        const clientCode = document.getElementById('registerClientCode').value.trim();
-        const password = document.getElementById('registerPassword').value;
+        const name = document.getElementById('registerName')?.value?.trim() || '';
+        const email = document.getElementById('registerEmail')?.value?.trim() || '';
+        const phone = document.getElementById('registerPhone')?.value?.trim() || '';
+        const clientCode = document.getElementById('registerClientCode')?.value?.trim() || '';
+        const password = document.getElementById('registerPassword')?.value || '';
         
         // Basic validation
         if (!name || !email || !phone || !clientCode || !password) {

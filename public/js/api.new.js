@@ -28,6 +28,68 @@ class ApiService {
      */
     setupInterceptors() {
         // Add auth token to requests
+        this.requestInterceptors.push((config) => {
+            // Ensure we have the latest tokens
+            this.updateTokens();
+            
+            // Add authorization header if token exists
+            if (this.token) {
+                config.headers = config.headers || {};
+                config.headers['Authorization'] = `Bearer ${this.token}`;
+            }
+            
+            return config;
+        });
+        
+        // Handle 401 responses
+        this.responseInterceptors.push(
+            (response) => response,
+            async (error) => {
+                const originalRequest = error.config;
+                
+                // If error is not 401 or we've already tried to refresh the token
+                if (error.response?.status !== 401 || originalRequest._retry) {
+                    return Promise.reject(error);
+                }
+                
+                // Mark this request as already retried
+                originalRequest._retry = true;
+                
+                try {
+                    // Try to refresh the token
+                    const response = await fetch('/api/auth/refresh', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            refreshToken: this.refreshToken,
+                        }),
+                    });
+                    
+                    if (!response.ok) throw new Error('Failed to refresh token');
+                    
+                    const data = await response.json();
+                    
+                    // Update tokens
+                    this.token = data.token;
+                    this.refreshToken = data.refreshToken;
+                    Utils.storage.set(CONFIG.STORAGE.TOKEN, data.token);
+                    Utils.storage.set(CONFIG.STORAGE.REFRESH_TOKEN, data.refreshToken);
+                    
+                    // Update the original request with new token
+                    originalRequest.headers['Authorization'] = `Bearer ${data.token}`;
+                    
+                    // Retry the original request
+                    return this.request(originalRequest);
+                } catch (error) {
+                    // If refresh fails, redirect to login
+                    console.error('Session expired. Please log in again.');
+                    window.location.href = '/login';
+                    return Promise.reject(error);
+                }
+            }
+        );
         this.addRequestInterceptor((config) => {
             // Ensure we have the latest token
             this.updateTokens();

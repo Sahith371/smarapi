@@ -5,8 +5,16 @@ const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const path = require('path');   // ❌ MISSING earlier
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Load environment variables from .env file
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
+// Debug: Log environment variables (remove in production)
+console.log('Environment variables loaded:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('MONGO_URI:', process.env.MONGO_URI ? '*****' : 'Not found');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -73,42 +81,95 @@ const limiter = rateLimit({
     error: 'Too many requests from this IP, please try again later.'
   }
 });
+
 app.use('/api/', limiter);
 
-// CORS configuration
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:10000',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:10000'
-];
-
+// CORS configuration - Development
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+    // In development, allow all origins including null (file://)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('🔄 Development mode - Allowing CORS for origin:', origin || 'null');
+      return callback(null, true);
     }
-    return callback(null, true);
+
+    // Allowed origins for production
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:10000',
+      'http://127.0.0.1:10000',
+      'http://localhost',
+      'http://127.0.0.1',
+      'null',
+      'file://',
+      'http://localhost:10000/',
+      'http://127.0.0.1:10000/'
+    ];
+
+    // Allow requests with no origin (like mobile apps, curl, etc.) or from allowed origins
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o) || o === origin)) {
+      console.log('✅ Allowing CORS for origin:', origin || 'null');
+      return callback(null, true);
+    }
+
+    console.log('CORS blocked request from origin:', origin);
+    callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'X-Auth-Token',
+    'X-CSRF-Token',
+    'X-Access-Token',
+    'X-Refresh-Token'
+  ],
+  exposedHeaders: [
+    'Content-Length',
+    'X-Access-Token',
+    'X-Refresh-Token',
+    'Set-Cookie'
+  ],
   credentials: true,
-  optionsSuccessStatus: 200,
-  maxAge: 86400, // 24 hours
-  preflightContinue: false
+  optionsSuccessStatus: 200,  // Some legacy browsers choke on 204
+  preflightContinue: false,
+  maxAge: 86400 // 24 hours
 };
 
+// Apply CORS with the specified options - Moved before other middleware
+app.use((req, res, next) => {
+  console.log('🔹 Incoming request:', req.method, req.url);
+  console.log('🔹 Headers:', JSON.stringify(req.headers, null, 2));
+  
+  // Allow all origins in development
+  if (process.env.NODE_ENV !== 'production') {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Auth-Token, X-CSRF-Token, X-Access-Token, X-Refresh-Token');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    
+    if (req.method === 'OPTIONS') {
+      console.log('🔄 Handling preflight request');
+      return res.status(200).end();
+    }
+    
+    console.log('✅ Allowing request from origin:', req.headers.origin || 'null');
+    return next();
+  }
+  
+  // In production, use CORS options
+  cors(corsOptions)(req, res, next);
+});
+
+// Apply CORS with the specified options
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Enable preflight for all routes
+app.options('*', cors(corsOptions));
 
 // General middleware
 app.use(compression());
-app.use(morgan('dev')); // Changed from 'combined' to 'dev' for better readability
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -129,12 +190,27 @@ app.use('/api/portfolio', authenticateToken, portfolioRoutes);
 app.use('/api/orders', authenticateToken, orderRoutes);
 app.use('/api/user', authenticateToken, userRoutes);
 
-// Serve frontend for production
-if (process.env.NODE_ENV === 'production') {
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+
+// Handle client-side routing - return index.html for all other GET requests
+app.get('*', (req, res) => {
+  // Don't serve HTML for API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({
+      success: false,
+      message: 'API endpoint not found'
+    });
+  }
+  
+  // Serve index.html for all other routes to support client-side routing
+  res.sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
+    if (err) {
+      console.error('Error sending file:', err);
+      res.status(500).send('Error loading the application');
+    }
   });
-}
+});
 
 // Error handling middleware
 app.use(errorHandler);
@@ -147,51 +223,110 @@ app.use('*', (req, res) => {
   });
 });
 
-// MongoDB connection with better error handling
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/smart_db', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 30000,
-      family: 4, // Use IPv4, skip trying IPv6
-      connectTimeoutMS: 10000,
-    });
-    
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-    return conn;
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error.message);
-    process.exit(1);
+// MongoDB connection with enhanced error handling and retry logic
+const connectDB = async (retries = 5, interval = 3000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      if (!process.env.MONGO_URI) {
+        throw new Error('❌ MONGO_URI is not defined in environment variables');
+      }
+
+      console.log(`🔌 Attempting to connect to MongoDB (Attempt ${i + 1}/${retries})...`);
+      
+      const conn = await mongoose.connect(process.env.MONGO_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 10000,  // Increased from 5000 to 10000
+        socketTimeoutMS: 45000,          // Increased from 30000 to 45000
+        connectTimeoutMS: 30000,         // Increased from 10000 to 30000
+        retryWrites: true,
+        w: 'majority'
+      });
+      
+      console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+      console.log(`📊 Database: ${conn.connection.name}`);
+      console.log(`🔗 Connection URL: ${process.env.MONGO_URI.replace(/:[^:]*@/, ':***@')}`);
+      
+      // Connection event listeners
+      mongoose.connection.on('connected', () => {
+        console.log('✅ Mongoose connected to DB');
+      });
+      
+      mongoose.connection.on('error', (err) => {
+        console.error('❌ Mongoose connection error:', err);
+      });
+      
+      mongoose.connection.on('disconnected', () => {
+        console.log('ℹ️  Mongoose disconnected');
+      });
+      
+      return conn;
+    } catch (error) {
+      console.error(`❌ MongoDB connection error (Attempt ${i + 1}/${retries}):`, error.message);
+      
+      if (i === retries - 1) {
+        console.error('❌ Maximum retry attempts reached. Exiting...');
+        process.exit(1);
+      }
+      
+      console.log(`⏳ Retrying in ${interval / 1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
   }
 };
 
-// Start server
+// Start server with enhanced error handling and logging
 const startServer = async () => {
   try {
+    console.log('🚀 Starting server...');
+    console.log(`🔄 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📡 Port: ${PORT}`);
+    
+    // Connect to MongoDB
     await connectDB();
     
+    // Start the server
     const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🌐 Server running on http://localhost:${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
-
-    // Handle server errors
-    server.on('error', (error) => {
-      if (error.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use.`);
-      } else {
-        console.error('Server error:', error);
-      }
-      process.exit(1);
+      const host = server.address().address;
+      const port = server.address().port;
+      console.log(`\n✅ Server is running!`);
+      console.log(`🌐 Local: http://localhost:${port}`);
+      console.log(`   Network: http://${host === '::' ? '127.0.0.1' : host}:${port}`);
+      console.log(`\n📊 API Endpoints:`);
+      console.log(`   - Health Check: http://localhost:${port}/health`);
+      console.log(`   - API Base URL: http://localhost:${port}/api`);
+      console.log(`\n🛑 Press Ctrl+C to stop the server\n`);
     });
 
     // Handle unhandled promise rejections
     process.on('unhandledRejection', (err) => {
-      console.error('Unhandled Rejection:', err);
-      server.close(() => process.exit(1));
+      console.error('\n❌ UN HANDLED REJECTION! Shutting down...');
+      console.error('Error:', err);
+      server.close(() => {
+        console.log('💥 Process terminated!');
+        process.exit(1);
+      });
     });
+    
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (err) => {
+      console.error('\n❌ UNCAUGHT EXCEPTION! Shutting down...');
+      console.error('Error:', err);
+      server.close(() => {
+        console.log('💥 Process terminated!');
+        process.exit(1);
+      });
+    });
+    
+    // Handle SIGTERM (for Docker, Kubernetes, etc.)
+    process.on('SIGTERM', () => {
+      console.log('\n🛑 SIGTERM RECEIVED. Shutting down gracefully...');
+      server.close(() => {
+        console.log('👋 Process terminated!');
+        process.exit(0);
+      });
+    });
+    
 
   } catch (error) {
     console.error('Failed to start server:', error);

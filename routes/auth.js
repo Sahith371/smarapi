@@ -77,51 +77,99 @@ router.post('/register', asyncHandler(async (req, res) => {
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
-router.post('/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-
-  // Validation
-  if (!email || !password) {
-    throw new AppError('Please provide email and password', 400);
-  }
-
-  // Check if user exists and get password
-  const user = await User.findOne({ email }).select('+password');
-
-  if (!user || !(await user.comparePassword(password))) {
-    throw new AppError('Invalid email or password', 401);
-  }
-
-  if (!user.isActive) {
-    throw new AppError('Account is deactivated. Please contact support.', 401);
-  }
-
-  // Update last login
-  await user.updateLastLogin();
-
-  // Generate tokens
-  const token = generateToken(user._id);
-  const refreshToken = generateRefreshToken(user._id);
-
-  res.json({
-    success: true,
-    message: 'Login successful',
-    data: {
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        clientCode: user.clientCode,
-        isVerified: user.isVerified,
-        subscription: user.subscription,
-        lastLogin: user.lastLogin,
-        hasSmartApiToken: user.isSmartApiTokenValid()
-      },
-      token,
-      refreshToken
-    }
+router.post('/login', async (req, res) => {
+  console.log('Login attempt received:', { 
+    email: req.body?.email,
+    hasPassword: !!req.body?.password 
   });
-}));
+  
+  try {
+    const { email, password } = req.body;
+
+    // Validation
+    if (!email || !password) {
+      console.error('Validation failed: Missing email or password');
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both email and password'
+      });
+    }
+
+    console.log('Looking up user with email:', email);
+    // Check if user exists and get password
+    const user = await User.findOne({ email: email.trim().toLowerCase() }).select('+password');
+    
+    if (!user) {
+      console.error('User not found for email:', email);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    console.log('User found, comparing password...');
+    // Check if password is correct
+    const isMatch = await user.comparePassword(password);
+    console.log('Password comparison result:', isMatch);
+    
+    if (!isMatch) {
+      console.error('Invalid password for user:', email);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Check if account is active
+    if (!user.isActive) {
+      console.error('Login attempt for deactivated account:', email);
+      return res.status(401).json({
+        success: false,
+        message: 'Account is deactivated. Please contact support.'
+      });
+    }
+
+    console.log('Updating last login for user:', user._id);
+    // Update last login
+    user.lastLogin = new Date();
+    user.loginCount = (user.loginCount || 0) + 1;
+    await user.save();
+
+    // Generate tokens
+    const token = generateToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    // Prepare user data for response
+    const userData = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      clientCode: user.clientCode,
+      isVerified: user.isVerified,
+      subscription: user.subscription
+    };
+
+    console.log('Login successful for user:', user.email);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user: userData,
+        token,
+        refreshToken
+      }
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred during login. Please try again.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
 
 // @desc    SmartAPI login
 // @route   POST /api/auth/smartapi-login

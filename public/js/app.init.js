@@ -3,37 +3,57 @@
  * Handles authentication checks and global event listeners
  */
 
+// Elements
+let loginSection, dashboardSection;
+
+// Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
+    // Get DOM elements
+    loginSection = document.getElementById('loginSection');
+    dashboardSection = document.getElementById('dashboardSection');
+    
     // Check authentication state on page load
     checkAuthState();
     
     // Set up global error handling
     setupGlobalErrorHandling();
+    
+    // Log the current authentication state for debugging
+    console.log('Initial auth state:', {
+        hasToken: !!localStorage.getItem('token'),
+        currentPath: window.location.pathname
+    });
 });
 
 /**
- * Check authentication state and redirect if needed
+ * Check authentication state and update UI accordingly
  */
 function checkAuthState() {
     const publicPaths = ['/login', '/register', '/forgot-password'];
     const currentPath = window.location.pathname;
+    const token = localStorage.getItem('token');
     
-    // Skip auth check for public paths
-    if (publicPaths.some(path => currentPath.startsWith(path))) {
-        return;
-    }
+    console.log('Checking auth state:', { currentPath, hasToken: !!token });
     
-    const token = localStorage.getItem('token') || Utils.storage.get(CONFIG.STORAGE.TOKEN);
-    
-    // If no token and not on a public page, redirect to login
-    if (!token && !publicPaths.includes(currentPath)) {
-        window.location.href = '/login';
-        return;
-    }
-    
-    // If token exists and we're on login/register page, redirect to dashboard
-    if (token && publicPaths.some(path => currentPath.startsWith(path))) {
-        window.location.href = '/dashboard';
+    // If user is authenticated
+    if (token) {
+        // Show dashboard, hide login
+        if (loginSection) loginSection.classList.add('hidden');
+        if (dashboardSection) dashboardSection.classList.remove('hidden');
+        
+        // If on a public page, redirect to dashboard
+        if (publicPaths.some(path => currentPath.includes(path))) {
+            window.location.href = '/dashboard';
+        }
+    } else {
+        // Show login, hide dashboard
+        if (loginSection) loginSection.classList.remove('hidden');
+        if (dashboardSection) dashboardSection.classList.add('hidden');
+        
+        // If on a protected page, redirect to login
+        if (!publicPaths.some(path => currentPath.includes(path)) && currentPath !== '/') {
+            window.location.href = '/login';
+        }
     }
 }
 
