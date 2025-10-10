@@ -39,6 +39,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "data:"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
+      scriptSrcAttr: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:", "http:"],
       connectSrc: ["'self'", "ws:", "wss:", "http:", "https:"],
       objectSrc: ["'none'"],
@@ -253,38 +254,50 @@ const startServer = async () => {
 startServer();
 
 // Graceful shutdown handlers
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('\n🛑 SIGTERM received. Shutting down gracefully...');
-  mongoose.connection.close(() => {
+  try {
+    await mongoose.connection.close();
     console.log('MongoDB connection closed.');
-    process.exit(0);
-  });
+  } catch (error) {
+    console.error('Error closing MongoDB:', error);
+  }
+  process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\n🛑 SIGINT received. Shutting down gracefully...');
-  mongoose.connection.close(() => {
+  try {
+    await mongoose.connection.close();
     console.log('MongoDB connection closed.');
-    process.exit(0);
-  });
+  } catch (error) {
+    console.error('Error closing MongoDB:', error);
+  }
+  process.exit(0);
 });
 
-process.on('unhandledRejection', (err) => {
+process.on('unhandledRejection', async (err) => {
   console.error('\n❌ UNHANDLED REJECTION! Shutting down...');
   console.error('Error:', err);
-  console.error('Stack:', err.stack);
-  mongoose.connection.close(() => {
-    process.exit(1);
-  });
+  console.error('Stack:', err?.stack);
+  try {
+    await mongoose.connection.close();
+  } catch (error) {
+    // Ignore close errors during shutdown
+  }
+  process.exit(1);
 });
 
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', async (err) => {
   console.error('\n❌ UNCAUGHT EXCEPTION! Shutting down...');
   console.error('Error:', err);
-  console.error('Stack:', err.stack);
-  mongoose.connection.close(() => {
-    process.exit(1);
-  });
+  console.error('Stack:', err?.stack);
+  try {
+    await mongoose.connection.close();
+  } catch (error) {
+    // Ignore close errors during shutdown
+  }
+  process.exit(1);
 });
 
 module.exports = app;

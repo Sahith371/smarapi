@@ -7,7 +7,10 @@ const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
     
+    console.log('🔐 Auth middleware - path:', req.path, 'has token:', !!token);
+    
     if (!token) {
+      console.log('❌ No token provided');
       return res.status(401).json({
         success: false,
         message: 'Access token required'
@@ -15,7 +18,9 @@ const authenticateToken = async (req, res, next) => {
     }
     
     // Verify token
+    console.log('✓ Verifying token...');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('✓ Token verified, userId:', decoded.userId);
     
     // Get user from database
     const user = await User.findById(decoded.userId).select('-password');

@@ -141,6 +141,12 @@ class ApiService {
             // Apply request interceptors
             config = this.applyRequestInterceptors(config);
             
+            console.log('Making API request:', {
+                url: config.url,
+                method: config.method || 'GET',
+                hasToken: !!this.token
+            });
+            
             // Set default headers
             const headers = {
                 'Content-Type': 'application/json',
@@ -151,12 +157,8 @@ class ApiService {
             const options = {
                 method: config.method || 'GET',
                 headers,
-                credentials: 'include',
-                ...config
+                credentials: 'include'
             };
-            
-            // Remove config properties that are not valid fetch options
-            delete options.data;
             
             // Add body for non-GET requests
             if (config.data && options.method !== 'GET') {
@@ -164,7 +166,9 @@ class ApiService {
             }
             
             // Make request
+            console.log('Fetching:', config.url, options);
             const response = await fetch(config.url, options);
+            console.log('Response received:', response.status, response.statusText);
             
             // Parse response
             let data;
@@ -210,13 +214,19 @@ class ApiService {
                 url: config?.url,
                 method: config?.method,
                 error: error.message,
-                stack: error.stack
+                name: error.name,
+                stack: error.stack,
+                fullError: error
             });
             
-            // If error doesn't have status, it's a network error
+            // If error doesn't have status, it's a network or fetch error
             if (!error.status) {
                 error.status = 0;
-                error.message = 'Network error. Please check your connection.';
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    error.message = `Network error: Cannot connect to ${config?.url}. Is the server running?`;
+                } else {
+                    error.message = error.message || 'Network error. Please check your connection.';
+                }
             }
             
             throw error;
