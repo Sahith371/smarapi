@@ -28,68 +28,6 @@ class ApiService {
      */
     setupInterceptors() {
         // Add auth token to requests
-        this.requestInterceptors.push((config) => {
-            // Ensure we have the latest tokens
-            this.updateTokens();
-            
-            // Add authorization header if token exists
-            if (this.token) {
-                config.headers = config.headers || {};
-                config.headers['Authorization'] = `Bearer ${this.token}`;
-            }
-            
-            return config;
-        });
-        
-        // Handle 401 responses
-        this.responseInterceptors.push(
-            (response) => response,
-            async (error) => {
-                const originalRequest = error.config;
-                
-                // If error is not 401 or we've already tried to refresh the token
-                if (error.response?.status !== 401 || originalRequest._retry) {
-                    return Promise.reject(error);
-                }
-                
-                // Mark this request as already retried
-                originalRequest._retry = true;
-                
-                try {
-                    // Try to refresh the token
-                    const response = await fetch('/api/auth/refresh', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            refreshToken: this.refreshToken,
-                        }),
-                    });
-                    
-                    if (!response.ok) throw new Error('Failed to refresh token');
-                    
-                    const data = await response.json();
-                    
-                    // Update tokens
-                    this.token = data.token;
-                    this.refreshToken = data.refreshToken;
-                    Utils.storage.set(CONFIG.STORAGE.TOKEN, data.token);
-                    Utils.storage.set(CONFIG.STORAGE.REFRESH_TOKEN, data.refreshToken);
-                    
-                    // Update the original request with new token
-                    originalRequest.headers['Authorization'] = `Bearer ${data.token}`;
-                    
-                    // Retry the original request
-                    return this.request(originalRequest);
-                } catch (error) {
-                    // If refresh fails, redirect to login
-                    console.error('Session expired. Please log in again.');
-                    window.location.href = '/login';
-                    return Promise.reject(error);
-                }
-            }
-        );
         this.addRequestInterceptor((config) => {
             // Ensure we have the latest token
             this.updateTokens();
@@ -134,12 +72,6 @@ class ApiService {
                     } catch (refreshError) {
                         console.error('Token refresh failed:', refreshError);
                         this.handleAuthError();
-                        
-                        // Redirect to login page on auth error
-                        if (window.location.pathname !== '/login') {
-                            window.location.href = '/login';
-                        }
-                        
                         throw refreshError;
                     }
                 }
@@ -147,17 +79,11 @@ class ApiService {
                 // If we've already tried to refresh the token or there's no refresh token
                 if (error.status === 401) {
                     this.handleAuthError();
-                    
-                    // Redirect to login page on auth error
-                    if (window.location.pathname !== '/login') {
-                        window.location.href = '/login';
-                    }
                 }
                 
                 // Handle network errors
                 if (!error.status) {
                     console.error('Network error:', error);
-                    // You might want to show a network error message to the user
                 }
                 
                 throw error;
@@ -225,8 +151,12 @@ class ApiService {
             const options = {
                 method: config.method || 'GET',
                 headers,
+                credentials: 'include',
                 ...config
             };
+            
+            // Remove config properties that are not valid fetch options
+            delete options.data;
             
             // Add body for non-GET requests
             if (config.data && options.method !== 'GET') {
@@ -238,11 +168,16 @@ class ApiService {
             
             // Parse response
             let data;
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-                data = await response.json();
-            } else {
-                data = await response.text();
+            try {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    data = await response.text();
+                }
+            } catch (parseError) {
+                console.error('Failed to parse response:', parseError);
+                data = null;
             }
             
             const result = {
@@ -254,22 +189,36 @@ class ApiService {
             };
             
             if (!response.ok) {
-                const error = new Error(data.message || response.statusText);
+                const error = new Error(data?.message || response.statusText);
                 error.response = result;
                 error.status = response.status;
                 error.config = config;
                 
                 // Apply error interceptors
-                throw await this.applyResponseInterceptors(error, true);
+                try {
+                    throw await this.applyResponseInterceptors(error, true);
+                } catch (interceptError) {
+                    throw interceptError;
+                }
             }
             
             // Apply success interceptors
             return await this.applyResponseInterceptors(result);
             
         } catch (error) {
-            if (CONFIG.DEBUG.API_LOGGING) {
-                console.error('API Request Error:', error);
+            console.error('API Request Error:', {
+                url: config?.url,
+                method: config?.method,
+                error: error.message,
+                stack: error.stack
+            });
+            
+            // If error doesn't have status, it's a network error
+            if (!error.status) {
+                error.status = 0;
+                error.message = 'Network error. Please check your connection.';
             }
+            
             throw error;
         }
     }
@@ -340,22 +289,24 @@ class ApiService {
     }
     
     /**
+     * Clear tokens
+     */
+    clearTokens() {
+        this.token = null;
+        this.refreshToken = null;
+        Utils.storage.remove(CONFIG.STORAGE.TOKEN);
+        Utils.storage.remove(CONFIG.STORAGE.REFRESH_TOKEN);
+    }
+    
+    /**
      * Handle authentication error
      */
     handleAuthError() {
-        this.token = null;
-        this.refreshToken = null;
-        
-        // Clear storage
-        Utils.storage.remove(CONFIG.STORAGE.TOKEN);
-        Utils.storage.remove(CONFIG.STORAGE.REFRESH_TOKEN);
-        
-        // Clear localStorage (for backward compatibility)
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        this.clearTokens();
+        Utils.storage.remove(CONFIG.STORAGE.USER);
         
         // Redirect to login if not already there
-        if (window.location.pathname !== '/login') {
+        if (!window.location.pathname.includes('login')) {
             window.location.href = '/login';
         }
     }
@@ -365,38 +316,33 @@ class ApiService {
      */
     async refreshAccessToken() {
         try {
-            const response = await makeRequest('POST', '/auth/refresh-token', {
-                refreshToken: this.refreshToken
+            const response = await fetch(`${this.baseURL}/api/auth/refresh-token`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    refreshToken: this.refreshToken
+                }),
             });
             
-            if (response.data.token) {
-                this.setToken(response.data.token);
+            if (!response.ok) throw new Error('Failed to refresh token');
+            
+            const data = await response.json();
+            
+            if (data.success && data.data.token) {
+                this.setToken(data.data.token);
             }
             
-            if (response.data.refreshToken) {
-                this.setRefreshToken(response.data.refreshToken);
+            if (data.success && data.data.refreshToken) {
+                this.setRefreshToken(data.data.refreshToken);
             }
-            
-            return response.data;
             
             return data;
         } catch (error) {
             console.error('Token refresh failed:', error);
             this.handleAuthError();
             throw error;
-        }
-    }
-    
-    /**
-     * Handle authentication errors
-     */
-    handleAuthError() {
-        this.clearTokens();
-        Utils.storage.remove(CONFIG.STORAGE.USER);
-        
-        // Redirect to login if not already there
-        if (!window.location.pathname.includes('login')) {
-            window.location.href = '/login';
         }
     }
     
@@ -446,7 +392,41 @@ class ApiService {
         return response.data;
     }
     
-    // Add other API methods as needed...
+    async getMarketStatus() {
+        try {
+            const response = await this.get('/api/market/status');
+            return response.data;
+        } catch (error) {
+            console.error('Market status error:', error);
+            return {
+                success: false,
+                data: {
+                    status: 'Unknown',
+                    currentTime: new Date().toLocaleTimeString()
+                }
+            };
+        }
+    }
+    
+    async syncPortfolio() {
+        const response = await this.post('/api/portfolio/sync');
+        return response.data;
+    }
+    
+    async getPortfolio() {
+        const response = await this.get('/api/portfolio');
+        return response.data;
+    }
+    
+    async getOrders(params = {}) {
+        const response = await this.get('/api/orders', params);
+        return response.data;
+    }
+    
+    async getMarketData(symbol) {
+        const response = await this.get(`/api/market/quote/${symbol}`);
+        return response.data;
+    }
 }
 
 // Create global API instance

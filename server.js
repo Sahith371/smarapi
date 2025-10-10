@@ -6,6 +6,7 @@ const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
 const dotenv = require('dotenv');
 
 // Load environment variables from .env file
@@ -30,31 +31,14 @@ const { authenticateToken } = require('./middleware/auth');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Configure static file serving with proper MIME types
-const staticOptions = {
-  setHeaders: (res, path) => {
-    if (path.endsWith('.js')) {
-      res.set('Content-Type', 'application/javascript');
-    } else if (path.endsWith('.css')) {
-      res.set('Content-Type', 'text/css');
-    } else if (path.match(/\.(png|jpe?g|gif|svg)$/)) {
-      res.set('Content-Type', `image/${path.split('.').pop()}`);
-    } else if (path.endsWith('.json')) {
-      res.set('Content-Type', 'application/json');
-    } else if (path.endsWith('.html')) {
-      res.set('Content-Type', 'text/html');
-    }
-  }
-};
-
 // Security middleware with updated CSP
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "data:"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:", "http:"],
       connectSrc: ["'self'", "ws:", "wss:", "http:", "https:"],
       objectSrc: ["'none'"],
@@ -64,57 +48,10 @@ app.use(helmet({
   }
 }));
 
-// Configure static file serving with cache control
-const oneDay = 24 * 60 * 60 * 1000; // 1 day in milliseconds
-app.use(express.static(path.join(__dirname, 'public'), {
-  ...staticOptions,
-  maxAge: process.env.NODE_ENV === 'production' ? oneDay : 0, // Cache for 1 day in production
-  etag: true,
-  lastModified: true
-}));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
-  message: {
-    error: 'Too many requests from this IP, please try again later.'
-  }
-});
-
-app.use('/api/', limiter);
-
-// CORS configuration - Development
+// CORS configuration - Simplified for development
 const corsOptions = {
-  origin: function (origin, callback) {
-    // In development, allow all origins including null (file://)
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('🔄 Development mode - Allowing CORS for origin:', origin || 'null');
-      return callback(null, true);
-    }
-
-    // Allowed origins for production
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:10000',
-      'http://127.0.0.1:10000',
-      'http://localhost',
-      'http://127.0.0.1',
-      'null',
-      'file://',
-      'http://localhost:10000/',
-      'http://127.0.0.1:10000/'
-    ];
-
-    // Allow requests with no origin (like mobile apps, curl, etc.) or from allowed origins
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o) || o === origin)) {
-      console.log('✅ Allowing CORS for origin:', origin || 'null');
-      return callback(null, true);
-    }
-
-    console.log('CORS blocked request from origin:', origin);
-    callback(new Error('Not allowed by CORS'));
-  },
+  origin: true, // Allow all origins in development
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
     'Content-Type',
@@ -133,40 +70,25 @@ const corsOptions = {
     'X-Refresh-Token',
     'Set-Cookie'
   ],
-  credentials: true,
-  optionsSuccessStatus: 200,  // Some legacy browsers choke on 204
+  optionsSuccessStatus: 200,
   preflightContinue: false,
   maxAge: 86400 // 24 hours
 };
 
-// Apply CORS with the specified options - Moved before other middleware
-app.use((req, res, next) => {
-  console.log('🔹 Incoming request:', req.method, req.url);
-  console.log('🔹 Headers:', JSON.stringify(req.headers, null, 2));
-  
-  // Allow all origins in development
-  if (process.env.NODE_ENV !== 'production') {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Auth-Token, X-CSRF-Token, X-Access-Token, X-Refresh-Token');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    
-    if (req.method === 'OPTIONS') {
-      console.log('🔄 Handling preflight request');
-      return res.status(200).end();
-    }
-    
-    console.log('✅ Allowing request from origin:', req.headers.origin || 'null');
-    return next();
-  }
-  
-  // In production, use CORS options
-  cors(corsOptions)(req, res, next);
-});
-
-// Apply CORS with the specified options
+// Apply CORS
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+  message: {
+    error: 'Too many requests from this IP, please try again later.'
+  }
+});
+
+app.use('/api/', limiter);
 
 // General middleware
 app.use(compression());
@@ -183,7 +105,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes
+// API routes (MUST come before static files and catch-all)
 app.use('/api/auth', authRoutes);
 app.use('/api/market', authenticateToken, marketRoutes);
 app.use('/api/portfolio', authenticateToken, portfolioRoutes);
@@ -191,9 +113,23 @@ app.use('/api/orders', authenticateToken, orderRoutes);
 app.use('/api/user', authenticateToken, userRoutes);
 
 // Serve static files from the public directory
-app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+const publicPath = path.join(__dirname, 'public');
+console.log(`📂 Serving static files from: ${publicPath}`);
 
-// Handle client-side routing - return index.html for all other GET requests
+app.use(express.static(publicPath, {
+  etag: false,
+  maxAge: 0,
+  setHeaders: (res, path) => {
+    // Disable caching in development
+    if (process.env.NODE_ENV === 'development') {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    }
+  }
+}));
+
+// Handle client-side routing - return index.html for all other GET requests (MUST be last)
 app.get('*', (req, res) => {
   // Don't serve HTML for API routes
   if (req.path.startsWith('/api/')) {
@@ -204,7 +140,7 @@ app.get('*', (req, res) => {
   }
   
   // Serve index.html for all other routes to support client-side routing
-  res.sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
+  res.sendFile(path.join(publicPath, 'index.html'), (err) => {
     if (err) {
       console.error('Error sending file:', err);
       res.status(500).send('Error loading the application');
@@ -212,16 +148,8 @@ app.get('*', (req, res) => {
   });
 });
 
-// Error handling middleware
+// Error handling middleware (MUST be last)
 app.use(errorHandler);
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
-});
 
 // MongoDB connection with enhanced error handling and retry logic
 const connectDB = async (retries = 5, interval = 3000) => {
