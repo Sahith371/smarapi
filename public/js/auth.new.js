@@ -257,7 +257,7 @@ class AuthManager {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${Utils.storage.get(CONFIG.STORAGE.TOKEN)}`
                 },
                 body: JSON.stringify({ password, totp })
             });
@@ -284,13 +284,17 @@ class AuthManager {
      * Store authentication data
      */
     storeAuthData(data) {
-        // Store in localStorage
+        // Store using Utils.storage (which uses the correct storage keys from CONFIG)
         if (data.token) {
-            localStorage.setItem('token', data.token);
+            Utils.storage.set(CONFIG.STORAGE.TOKEN, data.token);
         }
         
         if (data.user) {
-            localStorage.setItem('user', JSON.stringify(data.user));
+            Utils.storage.set(CONFIG.STORAGE.USER, data.user);
+        }
+        
+        if (data.refreshToken) {
+            Utils.storage.set(CONFIG.STORAGE.REFRESH_TOKEN, data.refreshToken);
         }
         
         // Also store in the API service if available
@@ -304,33 +308,24 @@ class AuthManager {
             }
         }
         
-        // Set a flag to indicate the user is logged in
-        localStorage.setItem('isAuthenticated', 'true');
+        console.log('Auth data stored successfully');
     }
     
     /**
      * Clear authentication data
      */
     clearAuthData() {
-        // Clear localStorage
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('isAuthenticated');
+        // Clear using Utils.storage
+        Utils.storage.remove(CONFIG.STORAGE.TOKEN);
+        Utils.storage.remove(CONFIG.STORAGE.USER);
+        Utils.storage.remove(CONFIG.STORAGE.REFRESH_TOKEN);
         
         // Clear from API service if available
-        if (window.API) {
-            if (window.API.setToken) {
-                window.API.setToken(null);
-            }
-            
-            if (window.API.setRefreshToken) {
-                window.API.setRefreshToken(null);
-            }
-            
-            if (window.API.handleAuthError) {
-                window.API.handleAuthError();
-            }
+        if (window.API && window.API.handleAuthError) {
+            window.API.handleAuthError();
         }
+        
+        console.log('Auth data cleared');
     }
     
     /**
@@ -342,7 +337,7 @@ class AuthManager {
             await fetch('/api/auth/logout', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    'Authorization': `Bearer ${Utils.storage.get(CONFIG.STORAGE.TOKEN)}`
                 }
             });
         } catch (error) {

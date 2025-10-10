@@ -6,8 +6,38 @@
 // Elements
 let loginSection, dashboardSection;
 
+// Migrate old token storage to new storage keys
+function migrateOldTokens() {
+    // Check if old token exists
+    const oldToken = localStorage.getItem('token');
+    const oldUser = localStorage.getItem('user');
+    
+    if (oldToken && !Utils.storage.get(CONFIG.STORAGE.TOKEN)) {
+        console.log('Migrating old token to new storage...');
+        Utils.storage.set(CONFIG.STORAGE.TOKEN, oldToken);
+        
+        if (oldUser) {
+            try {
+                Utils.storage.set(CONFIG.STORAGE.USER, JSON.parse(oldUser));
+            } catch (e) {
+                console.error('Failed to migrate user data:', e);
+            }
+        }
+        
+        // Clean up old keys
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('isAuthenticated');
+        
+        console.log('Token migration complete');
+    }
+}
+
 // Initialize the application
 document.addEventListener('DOMContentLoaded', () => {
+    // Migrate old tokens first
+    migrateOldTokens();
+    
     // Get DOM elements
     loginSection = document.getElementById('loginSection');
     dashboardSection = document.getElementById('dashboardSection');
@@ -20,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Log the current authentication state for debugging
     console.log('Initial auth state:', {
-        hasToken: !!localStorage.getItem('token'),
+        hasToken: !!Utils.storage.get(CONFIG.STORAGE.TOKEN),
         currentPath: window.location.pathname
     });
 });
@@ -31,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function checkAuthState() {
     const publicPaths = ['/login', '/register', '/forgot-password'];
     const currentPath = window.location.pathname;
-    const token = localStorage.getItem('token');
+    const token = Utils.storage.get(CONFIG.STORAGE.TOKEN);
     
     console.log('Checking auth state:', { currentPath, hasToken: !!token });
     
