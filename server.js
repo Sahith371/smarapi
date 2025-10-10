@@ -101,8 +101,14 @@ app.get('/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
+});
+
+// Favicon route to prevent 404 errors
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
 });
 
 // API routes (MUST come before static files and catch-all)
@@ -137,6 +143,12 @@ app.get('*', (req, res) => {
       success: false,
       message: 'API endpoint not found'
     });
+  }
+  
+  // Don't serve HTML for static files (they should be handled by express.static middleware)
+  const staticPaths = ['/js/', '/css/', '/images/', '/fonts/', '/favicon.ico'];
+  if (staticPaths.some(path => req.path.startsWith(path)) || req.path.includes('.')) {
+    return res.status(404).send('File not found');
   }
   
   // Serve index.html for all other routes to support client-side routing
@@ -193,14 +205,17 @@ const connectDB = async (retries = 5, interval = 3000) => {
       console.error(`❌ MongoDB connection error (Attempt ${i + 1}/${retries}):`, error.message);
       
       if (i === retries - 1) {
-        console.error('❌ Maximum retry attempts reached. Exiting...');
-        process.exit(1);
+        console.error('❌ Maximum retry attempts reached.');
+        console.error('⚠️  Server will continue without database connection.');
+        console.error('⚠️  API endpoints requiring database will not work.');
+        return null;
       }
       
       console.log(`⏳ Retrying in ${interval / 1000} seconds...`);
       await new Promise(resolve => setTimeout(resolve, interval));
     }
   }
+  return null;
 };
 
 // Start server with enhanced error handling and logging
@@ -226,38 +241,10 @@ const startServer = async () => {
       console.log(`\n🛑 Press Ctrl+C to stop the server\n`);
     });
 
-    // Handle unhandled promise rejections
-    process.on('unhandledRejection', (err) => {
-      console.error('\n❌ UN HANDLED REJECTION! Shutting down...');
-      console.error('Error:', err);
-      server.close(() => {
-        console.log('💥 Process terminated!');
-        process.exit(1);
-      });
-    });
-    
-    // Handle uncaught exceptions
-    process.on('uncaughtException', (err) => {
-      console.error('\n❌ UNCAUGHT EXCEPTION! Shutting down...');
-      console.error('Error:', err);
-      server.close(() => {
-        console.log('💥 Process terminated!');
-        process.exit(1);
-      });
-    });
-    
-    // Handle SIGTERM (for Docker, Kubernetes, etc.)
-    process.on('SIGTERM', () => {
-      console.log('\n🛑 SIGTERM RECEIVED. Shutting down gracefully...');
-      server.close(() => {
-        console.log('👋 Process terminated!');
-        process.exit(0);
-      });
-    });
-    
-
   } catch (error) {
     console.error('Failed to start server:', error);
+    console.error('Error details:', error.message);
+    console.error('Stack:', error.stack);
     process.exit(1);
   }
 };
@@ -265,9 +252,9 @@ const startServer = async () => {
 // Start the application
 startServer();
 
-// Graceful shutdown
+// Graceful shutdown handlers
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
+  console.log('\n🛑 SIGTERM received. Shutting down gracefully...');
   mongoose.connection.close(() => {
     console.log('MongoDB connection closed.');
     process.exit(0);
@@ -275,10 +262,28 @@ process.on('SIGTERM', () => {
 });
 
 process.on('SIGINT', () => {
-  console.log('SIGINT received. Shutting down gracefully...');
+  console.log('\n🛑 SIGINT received. Shutting down gracefully...');
   mongoose.connection.close(() => {
     console.log('MongoDB connection closed.');
     process.exit(0);
+  });
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('\n❌ UNHANDLED REJECTION! Shutting down...');
+  console.error('Error:', err);
+  console.error('Stack:', err.stack);
+  mongoose.connection.close(() => {
+    process.exit(1);
+  });
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('\n❌ UNCAUGHT EXCEPTION! Shutting down...');
+  console.error('Error:', err);
+  console.error('Stack:', err.stack);
+  mongoose.connection.close(() => {
+    process.exit(1);
   });
 });
 
