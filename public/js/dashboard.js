@@ -5,30 +5,30 @@ class DashboardManager {
         this.data = null;
         this.isLoading = false;
         this.refreshInterval = null;
-        
+
         // Chart instances
         this.charts = {};
     }
-    
+
     /**
      * Load dashboard data
      */
     async load() {
         if (this.isLoading) return;
-        
+
         try {
             this.isLoading = true;
             this.showLoadingState();
-            
+
             const response = await API.getDashboard();
-            
+
             if (response.success) {
                 this.data = response.data.dashboard;
                 this.render();
             } else {
                 this.showError(response.message || 'Failed to load dashboard');
             }
-            
+
         } catch (error) {
             console.error('Dashboard load error:', error);
             this.showError(error.message || CONFIG.ERRORS.SERVER_ERROR);
@@ -37,13 +37,13 @@ class DashboardManager {
             this.hideLoadingState();
         }
     }
-    
+
     /**
      * Render dashboard
      */
     render() {
         if (!this.data) return;
-        
+
         this.renderPortfolioSummary();
         this.renderMarketStatus();
         this.renderRecentOrders();
@@ -51,61 +51,51 @@ class DashboardManager {
         this.renderQuickActions();
         this.renderAlerts();
     }
-    
-    /**
-     * Render portfolio summary
-     */
+
     renderPortfolioSummary() {
-        const portfolio = this.data.portfolio;
-        
-        // Update total value
+        const portfolio = this.data.portfolio || {};
+
         const totalValueEl = document.getElementById('totalValue');
         if (totalValueEl) {
             totalValueEl.textContent = Utils.formatCurrency(portfolio.totalCurrentValue);
             totalValueEl.className = `stat-value ${Utils.getPnLClass(portfolio.totalPnL)}`;
         }
-        
-        // Update P&L
+
         const totalPnLEl = document.getElementById('totalPnL');
         if (totalPnLEl) {
             const pnlText = `${Utils.formatCurrency(portfolio.totalPnL)} (${Utils.formatPercentage(portfolio.totalPnLPercentage)})`;
             totalPnLEl.textContent = pnlText;
             totalPnLEl.className = `stat-value ${Utils.getPnLClass(portfolio.totalPnL)}`;
         }
-        
-        // Update holdings count
+
         const totalHoldingsEl = document.getElementById('totalHoldings');
         if (totalHoldingsEl) {
             totalHoldingsEl.textContent = portfolio.holdingsCount || 0;
         }
-        
-        // Update sync button state
+
         this.updateSyncButton(portfolio.lastSyncAt);
     }
-    
-    /**
-     * Render market status
-     */
+
     async renderMarketStatus() {
         try {
             const response = await API.getMarketStatus();
-            
+
             if (response.success) {
                 const marketData = response.data;
-                
+
                 const statusEl = document.getElementById('marketStatus');
                 const timeEl = document.getElementById('marketTime');
-                
+
                 if (statusEl) {
                     const statusDot = statusEl.querySelector('.status-dot');
                     const statusText = statusEl.querySelector('.status-text');
-                    
+
                     if (statusDot && statusText) {
                         statusDot.className = `status-dot ${marketData.status.toLowerCase()}`;
                         statusText.textContent = marketData.status;
                     }
                 }
-                
+
                 if (timeEl) {
                     timeEl.textContent = marketData.currentTime;
                 }
@@ -114,16 +104,13 @@ class DashboardManager {
             console.error('Market status error:', error);
         }
     }
-    
-    /**
-     * Render recent orders
-     */
+
     renderRecentOrders() {
-        const orders = this.data.orders.recent || [];
+        const orders = this.data.orders?.recent || [];
         const container = document.getElementById('recentOrdersList');
-        
+
         if (!container) return;
-        
+
         if (orders.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -133,7 +120,7 @@ class DashboardManager {
             `;
             return;
         }
-        
+
         const ordersHtml = orders.map(order => `
             <div class="order-item">
                 <div class="order-info">
@@ -148,19 +135,16 @@ class DashboardManager {
                 </div>
             </div>
         `).join('');
-        
+
         container.innerHTML = ordersHtml;
     }
-    
-    /**
-     * Render top performers
-     */
+
     renderTopPerformers() {
         const performers = this.data.topPerformers;
         const container = document.getElementById('topPerformersList');
-        
+
         if (!container) return;
-        
+
         if (!performers || (!performers.topGainers.length && !performers.topLosers.length)) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -170,9 +154,9 @@ class DashboardManager {
             `;
             return;
         }
-        
+
         let performersHtml = '';
-        
+
         // Top gainers
         if (performers.topGainers.length > 0) {
             performersHtml += '<div class="performers-section"><h4>Top Gainers</h4>';
@@ -191,7 +175,7 @@ class DashboardManager {
             });
             performersHtml += '</div>';
         }
-        
+
         // Top losers
         if (performers.topLosers.length > 0) {
             performersHtml += '<div class="performers-section"><h4>Top Losers</h4>';
@@ -210,16 +194,12 @@ class DashboardManager {
             });
             performersHtml += '</div>';
         }
-        
+
         container.innerHTML = performersHtml;
     }
-    
-    /**
-     * Render quick actions
-     */
+
     renderQuickActions() {
         const actionButtons = document.querySelectorAll('.action-btn');
-        
         actionButtons.forEach(btn => {
             btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
@@ -227,10 +207,7 @@ class DashboardManager {
             });
         });
     }
-    
-    /**
-     * Handle quick actions
-     */
+
     handleQuickAction(action) {
         switch (action) {
             case 'buy':
@@ -247,28 +224,18 @@ class DashboardManager {
                 break;
         }
     }
-    
-    /**
-     * Show order modal
-     */
+
     showOrderModal(transactionType) {
-        // This would show a modal for placing orders
-        // For now, navigate to orders section
         window.App.navigateToSection('orders');
         Toast.show(`${transactionType} order form coming soon!`, 'info');
     }
-    
-    /**
-     * Render alerts
-     */
+
     renderAlerts() {
-        const alerts = this.data.alerts;
+        const alerts = this.data.alerts || {};
         const alertsContainer = this.createAlertsContainer();
-        
-        // Clear existing alerts
+
         alertsContainer.innerHTML = '';
-        
-        // Portfolio sync alert
+
         if (alerts.portfolioSync) {
             this.showAlert(
                 'Portfolio sync required',
@@ -277,8 +244,7 @@ class DashboardManager {
                 () => this.syncPortfolio()
             );
         }
-        
-        // SmartAPI connection alert
+
         if (alerts.smartApiConnection) {
             this.showAlert(
                 'SmartAPI connection required',
@@ -288,33 +254,24 @@ class DashboardManager {
             );
         }
     }
-    
-    /**
-     * Create alerts container
-     */
+
     createAlertsContainer() {
         let container = document.getElementById('dashboardAlerts');
-        
         if (!container) {
             container = document.createElement('div');
             container.id = 'dashboardAlerts';
             container.className = 'dashboard-alerts';
-            
             const dashboardGrid = document.querySelector('.dashboard-grid');
             if (dashboardGrid) {
                 dashboardGrid.insertBefore(container, dashboardGrid.firstChild);
             }
         }
-        
         return container;
     }
-    
-    /**
-     * Show alert
-     */
+
     showAlert(title, message, type, action) {
         const alertsContainer = this.createAlertsContainer();
-        
+
         const alertDiv = document.createElement('div');
         alertDiv.className = `alert alert-${type}`;
         alertDiv.innerHTML = `
@@ -327,39 +284,35 @@ class DashboardManager {
                 <button class="btn btn-sm btn-outline alert-dismiss">Dismiss</button>
             </div>
         `;
-        
-        // Add event listeners
+
         const actionBtn = alertDiv.querySelector('.alert-action');
         const dismissBtn = alertDiv.querySelector('.alert-dismiss');
-        
+
         if (actionBtn && action) {
             actionBtn.addEventListener('click', () => {
                 action();
                 alertDiv.remove();
             });
         }
-        
+
         if (dismissBtn) {
             dismissBtn.addEventListener('click', () => {
                 alertDiv.remove();
             });
         }
-        
+
         alertsContainer.appendChild(alertDiv);
     }
-    
-    /**
-     * Update sync button state
-     */
+
     updateSyncButton(lastSyncAt) {
         const syncBtn = document.getElementById('syncPortfolio');
         if (!syncBtn) return;
-        
+
         if (lastSyncAt) {
             const syncTime = new Date(lastSyncAt);
             const now = new Date();
             const diffHours = (now - syncTime) / (1000 * 60 * 60);
-            
+
             if (diffHours > 24) {
                 syncBtn.classList.add('btn-warning');
                 syncBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Sync Required';
@@ -368,36 +321,27 @@ class DashboardManager {
                 syncBtn.innerHTML = '<i class="fas fa-sync"></i> Sync';
             }
         }
-        
-        // Add click handler
-        syncBtn.addEventListener('click', () => {
-            this.syncPortfolio();
-        });
+
+        syncBtn.addEventListener('click', () => this.syncPortfolio());
     }
-    
-    /**
-     * Sync portfolio
-     */
+
     async syncPortfolio() {
         const syncBtn = document.getElementById('syncPortfolio');
-        
         try {
             if (syncBtn) {
                 syncBtn.disabled = true;
                 syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
             }
-            
+
             const response = await API.syncPortfolio();
-            
+
             if (response.success) {
                 Toast.show('Portfolio synced successfully', 'success');
-                
-                // Reload dashboard
                 await this.load();
             } else {
                 Toast.show(response.message || 'Sync failed', 'error');
             }
-            
+
         } catch (error) {
             console.error('Portfolio sync error:', error);
             Toast.show(error.message || 'Sync failed', 'error');
@@ -408,41 +352,26 @@ class DashboardManager {
             }
         }
     }
-    
-    /**
-     * Setup refresh functionality
-     */
+
     setupRefresh() {
         const refreshBtn = document.getElementById('refreshDashboard');
         if (refreshBtn) {
-            refreshBtn.addEventListener('click', () => {
-                this.load();
-            });
+            refreshBtn.addEventListener('click', () => this.load());
         }
     }
-    
-    /**
-     * Show loading state
-     */
+
     showLoadingState() {
-        // Add loading indicators to cards
         document.querySelectorAll('.dashboard-grid .card').forEach(card => {
             card.classList.add('loading');
         });
     }
-    
-    /**
-     * Hide loading state
-     */
+
     hideLoadingState() {
         document.querySelectorAll('.dashboard-grid .card').forEach(card => {
             card.classList.remove('loading');
         });
     }
-    
-    /**
-     * Show error state
-     */
+
     showError(message) {
         const dashboardGrid = document.querySelector('.dashboard-grid');
         if (dashboardGrid) {
@@ -459,31 +388,17 @@ class DashboardManager {
             `;
         }
     }
-    
-    /**
-     * Initialize dashboard
-     */
+
     init() {
         this.setupRefresh();
-        
-        // Load data initially
         this.load();
     }
-    
-    /**
-     * Cleanup
-     */
+
     cleanup() {
-        // Clear intervals
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
-        }
-        
-        // Destroy charts
+        if (this.refreshInterval) clearInterval(this.refreshInterval);
+
         Object.values(this.charts).forEach(chart => {
-            if (chart && chart.destroy) {
-                chart.destroy();
-            }
+            if (chart && chart.destroy) chart.destroy();
         });
         this.charts = {};
     }
@@ -492,14 +407,11 @@ class DashboardManager {
 // Create global Dashboard instance
 window.Dashboard = new DashboardManager();
 
-// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    if (window.Dashboard) {
-        window.Dashboard.init();
-    }
+    if (window.Dashboard) window.Dashboard.init();
 });
 
-// Export for use in other modules
+// Export
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = DashboardManager;
 }

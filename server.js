@@ -96,6 +96,19 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Test route that doesn't require database
+app.get('/test-auth', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    message: 'Authentication working!',
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email
+    }
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -123,21 +136,20 @@ app.use('/api/user', authenticateToken, userRoutes);
 const publicPath = path.join(__dirname, 'public');
 console.log(`📂 Serving static files from: ${publicPath}`);
 
+// First, serve static files from the public directory
 app.use(express.static(publicPath, {
   etag: false,
-  maxAge: 0,
-  setHeaders: (res, path) => {
-    // Disable caching in development
-    if (process.env.NODE_ENV === 'development') {
-      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      res.set('Pragma', 'no-cache');
-      res.set('Expires', '0');
-    }
-  }
+  maxAge: 0
+}));
+
+// Serve static files from the root directory (for backward compatibility)
+app.use(express.static(__dirname, {
+  etag: false,
+  maxAge: 0
 }));
 
 // Handle client-side routing - return index.html for all other GET requests (MUST be last)
-app.get('*', (req, res) => {
+app.get('*', (req, res, next) => {
   // Don't serve HTML for API routes
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({
@@ -147,15 +159,15 @@ app.get('*', (req, res) => {
   }
   
   // Don't serve HTML for static files (they should be handled by express.static middleware)
-  const staticPaths = ['/js/', '/css/', '/images/', '/fonts/', '/favicon.ico'];
-  if (staticPaths.some(path => req.path.startsWith(path)) || req.path.includes('.')) {
-    return res.status(404).send('File not found');
+  const staticExtensions = ['.js', '.css', '.jpg', '.jpeg', '.png', '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf', '.eot'];
+  if (staticExtensions.some(ext => req.path.endsWith(ext))) {
+    return next(); // Let express.static handle these
   }
   
-  // Serve index.html for all other routes to support client-side routing
+  // For all other routes, serve index.html
   res.sendFile(path.join(publicPath, 'index.html'), (err) => {
     if (err) {
-      console.error('Error sending file:', err);
+      console.error('Error sending index.html:', err);
       res.status(500).send('Error loading the application');
     }
   });

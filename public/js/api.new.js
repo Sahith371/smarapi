@@ -1,4 +1,6 @@
-// API Service Layer
+// ===============================
+// ✅ API Service Layer (Fixed)
+// ===============================
 
 class ApiService {
     constructor() {
@@ -6,68 +8,63 @@ class ApiService {
         this.token = null;
         this.refreshToken = null;
         this.updateTokens();
-        
-        // Request interceptors
+
+        // Request and response interceptors
         this.requestInterceptors = [];
         this.responseInterceptors = [];
-        
+
         // Setup default interceptors
         this.setupInterceptors();
     }
-    
-    /**
-     * Update tokens from storage
-     */
+
+    /** 🔄 Update tokens from storage */
     updateTokens() {
         this.token = Utils.storage.get(CONFIG.STORAGE.TOKEN);
         this.refreshToken = Utils.storage.get(CONFIG.STORAGE.REFRESH_TOKEN);
     }
-    
-    /**
-     * Setup request/response interceptors
-     */
+
+    /** ⚙️ Setup request/response interceptors */
     setupInterceptors() {
-        // Add auth token to requests
+        // ✅ Request Interceptor
         this.addRequestInterceptor((config) => {
-            // Ensure we have the latest token
+            // Ensure config object exists
+            config = config || {};
+            config.headers = config.headers || {};
+
+            // Update tokens
             this.updateTokens();
-            
-            // Add Authorization header if token exists
+
+            // Add Authorization header
             if (this.token) {
-                config.headers = config.headers || {};
                 config.headers.Authorization = `Bearer ${this.token}`;
             }
-            
-            // Add content type if not set
+
+            // Add Content-Type header if not set
             if (!config.headers['Content-Type']) {
                 config.headers['Content-Type'] = 'application/json';
             }
-            
-            // Add credentials for cookies
+
+            // Include cookies
             config.credentials = 'include';
-            
+
             return config;
         });
-        
-        // Handle token refresh on 401
+
+        // ✅ Response Interceptor for 401 handling
         this.addResponseInterceptor(
             (response) => response,
             async (error) => {
                 const originalRequest = error.config;
-                
-                // If error is 401 and we haven't already tried to refresh the token
-                if (error.status === 401 && this.refreshToken && !originalRequest._retry) {
+
+                // Refresh token on 401
+                if (error.status === 401 && this.refreshToken && !originalRequest?._retry) {
                     try {
-                        // Mark the request as retried
                         originalRequest._retry = true;
-                        
-                        // Try to refresh the token
                         await this.refreshAccessToken();
-                        
-                        // Update the Authorization header with the new token
+
+                        // Retry original request with new token
+                        originalRequest.headers = originalRequest.headers || {};
                         originalRequest.headers.Authorization = `Bearer ${this.token}`;
-                        
-                        // Retry the original request
                         return this.request(originalRequest);
                     } catch (refreshError) {
                         console.error('Token refresh failed:', refreshError);
@@ -75,48 +72,40 @@ class ApiService {
                         throw refreshError;
                     }
                 }
-                
-                // If we've already tried to refresh the token or there's no refresh token
+
+                // Handle 401 if no refresh token
                 if (error.status === 401) {
                     this.handleAuthError();
                 }
-                
-                // Handle network errors
+
+                // Handle network issues
                 if (!error.status) {
                     console.error('Network error:', error);
                 }
-                
+
                 throw error;
             }
         );
     }
-    
-    /**
-     * Add request interceptor
-     */
+
+    /** ➕ Add Request Interceptor */
     addRequestInterceptor(interceptor) {
         this.requestInterceptors.push(interceptor);
     }
-    
-    /**
-     * Add response interceptor
-     */
+
+    /** ➕ Add Response Interceptor */
     addResponseInterceptor(onSuccess, onError) {
         this.responseInterceptors.push({ onSuccess, onError });
     }
-    
-    /**
-     * Apply request interceptors
-     */
+
+    /** 🧩 Apply Request Interceptors (safe) */
     applyRequestInterceptors(config) {
-        return this.requestInterceptors.reduce((config, interceptor) => {
-            return interceptor(config);
-        }, config);
+        return this.requestInterceptors.reduce((cfg, interceptor) => {
+            return interceptor(cfg || {});
+        }, config || {});
     }
-    
-    /**
-     * Apply response interceptors
-     */
+
+    /** 🧩 Apply Response Interceptors */
     async applyResponseInterceptors(response, isError = false) {
         for (const interceptor of this.responseInterceptors) {
             try {
@@ -125,52 +114,47 @@ class ApiService {
                 } else if (!isError && interceptor.onSuccess) {
                     response = await interceptor.onSuccess(response);
                 }
-            } catch (error) {
-                if (isError) throw error;
-                throw error;
+            } catch (err) {
+                throw err;
             }
         }
         return response;
     }
-    
-    /**
-     * Make HTTP request
-     */
+
+    /** 🌐 Main Request Method */
     async request(config) {
         try {
-            // Apply request interceptors
+            // Apply interceptors safely
             config = this.applyRequestInterceptors(config);
-            
+
             console.log('Making API request:', {
                 url: config.url,
                 method: config.method || 'GET',
                 hasToken: !!this.token
             });
-            
-            // Set default headers
+
+            // Merge headers safely
             const headers = {
                 'Content-Type': 'application/json',
-                ...config.headers
+                ...(config.headers || {})
             };
-            
-            // Build fetch options
+
             const options = {
                 method: config.method || 'GET',
                 headers,
                 credentials: 'include'
             };
-            
-            // Add body for non-GET requests
+
+            // Add request body for non-GET methods
             if (config.data && options.method !== 'GET') {
                 options.body = JSON.stringify(config.data);
             }
-            
-            // Make request
+
             console.log('Fetching:', config.url, options);
             const response = await fetch(config.url, options);
             console.log('Response received:', response.status, response.statusText);
-            
-            // Parse response
+
+            // Parse response safely
             let data;
             try {
                 const contentType = response.headers.get('content-type');
@@ -183,7 +167,7 @@ class ApiService {
                 console.error('Failed to parse response:', parseError);
                 data = null;
             }
-            
+
             const result = {
                 data,
                 status: response.status,
@@ -191,35 +175,28 @@ class ApiService {
                 headers: response.headers,
                 config
             };
-            
+
+            // Handle non-OK responses
             if (!response.ok) {
                 const error = new Error(data?.message || response.statusText);
                 error.response = result;
                 error.status = response.status;
                 error.config = config;
-                
-                // Apply error interceptors
-                try {
-                    throw await this.applyResponseInterceptors(error, true);
-                } catch (interceptError) {
-                    throw interceptError;
-                }
+
+                throw await this.applyResponseInterceptors(error, true);
             }
-            
-            // Apply success interceptors
+
             return await this.applyResponseInterceptors(result);
-            
+
         } catch (error) {
             console.error('API Request Error:', {
                 url: config?.url,
                 method: config?.method,
                 error: error.message,
                 name: error.name,
-                stack: error.stack,
-                fullError: error
+                stack: error.stack
             });
-            
-            // If error doesn't have status, it's a network or fetch error
+
             if (!error.status) {
                 error.status = 0;
                 if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -228,28 +205,26 @@ class ApiService {
                     error.message = error.message || 'Network error. Please check your connection.';
                 }
             }
-            
+
             throw error;
         }
     }
-    
-    /**
-     * GET request
-     */
+
+    // ===============================
+    // 🧭 HTTP Methods
+    // ===============================
+
     async get(url, params = {}, config = {}) {
-        const queryString = new URLSearchParams(params).toString();
-        const fullUrl = queryString ? `${url}?${queryString}` : url;
-        
+        const query = new URLSearchParams(params).toString();
+        const fullUrl = query ? `${url}?${query}` : url;
+
         return this.request({
             method: 'GET',
             url: this.baseURL + fullUrl,
             ...config
         });
     }
-    
-    /**
-     * POST request
-     */
+
     async post(url, data = {}, config = {}) {
         return this.request({
             method: 'POST',
@@ -258,10 +233,7 @@ class ApiService {
             ...config
         });
     }
-    
-    /**
-     * PUT request
-     */
+
     async put(url, data = {}, config = {}) {
         return this.request({
             method: 'PUT',
@@ -270,10 +242,7 @@ class ApiService {
             ...config
         });
     }
-    
-    /**
-     * DELETE request
-     */
+
     async delete(url, config = {}) {
         return this.request({
             method: 'DELETE',
@@ -281,73 +250,55 @@ class ApiService {
             ...config
         });
     }
-    
-    /**
-     * Set authentication token
-     */
+
+    // ===============================
+    // 🔐 Auth & Token Handling
+    // ===============================
+
     setToken(token) {
         this.token = token;
         Utils.storage.set(CONFIG.STORAGE.TOKEN, token);
     }
-    
-    /**
-     * Set refresh token
-     */
+
     setRefreshToken(refreshToken) {
         this.refreshToken = refreshToken;
         Utils.storage.set(CONFIG.STORAGE.REFRESH_TOKEN, refreshToken);
     }
-    
-    /**
-     * Clear tokens
-     */
+
     clearTokens() {
         this.token = null;
         this.refreshToken = null;
         Utils.storage.remove(CONFIG.STORAGE.TOKEN);
         Utils.storage.remove(CONFIG.STORAGE.REFRESH_TOKEN);
     }
-    
-    /**
-     * Handle authentication error
-     */
+
     handleAuthError() {
         this.clearTokens();
         Utils.storage.remove(CONFIG.STORAGE.USER);
-        
-        // Redirect to login if not already there
         if (!window.location.pathname.includes('login')) {
             window.location.href = '/login';
         }
     }
-    
-    /**
-     * Refresh access token
-     */
+
     async refreshAccessToken() {
         try {
             const response = await fetch(`${this.baseURL}/api/auth/refresh-token`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    refreshToken: this.refreshToken
-                }),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken: this.refreshToken })
             });
-            
+
             if (!response.ok) throw new Error('Failed to refresh token');
-            
+
             const data = await response.json();
-            
+
             if (data.success && data.data.token) {
                 this.setToken(data.data.token);
             }
-            
             if (data.success && data.data.refreshToken) {
                 this.setRefreshToken(data.data.refreshToken);
             }
-            
+
             return data;
         } catch (error) {
             console.error('Token refresh failed:', error);
@@ -355,53 +306,52 @@ class ApiService {
             throw error;
         }
     }
-    
-    // Auth API methods
+
+    // ===============================
+    // 🧾 Auth API Methods
+    // ===============================
+
     async login(credentials) {
         const response = await this.post(CONFIG.API.ENDPOINTS.LOGIN, credentials);
-        
         if (response.data.success) {
             this.setToken(response.data.data.token);
             this.setRefreshToken(response.data.data.refreshToken);
             Utils.storage.set(CONFIG.STORAGE.USER, response.data.data.user);
         }
-        
         return response.data;
     }
-    
+
     async register(userData) {
         const response = await this.post(CONFIG.API.ENDPOINTS.REGISTER, userData);
-        
         if (response.data.success) {
             this.setToken(response.data.data.token);
             this.setRefreshToken(response.data.data.refreshToken);
             Utils.storage.set(CONFIG.STORAGE.USER, response.data.data.user);
         }
-        
         return response.data;
     }
-    
+
     async logout() {
         try {
             await this.post(CONFIG.API.ENDPOINTS.LOGOUT);
-        } catch (error) {
-            // Continue with logout even if API call fails
+        } catch {
+            // continue logout even if API fails
         } finally {
             this.clearTokens();
             Utils.storage.remove(CONFIG.STORAGE.USER);
         }
     }
-    
+
     async getCurrentUser() {
         const response = await this.get(CONFIG.API.ENDPOINTS.ME);
         return response.data;
     }
-    
+
     async getDashboard() {
         const response = await this.get(CONFIG.API.ENDPOINTS.DASHBOARD);
         return response.data;
     }
-    
+
     async getMarketStatus() {
         try {
             const response = await this.get('/api/market/status');
@@ -417,32 +367,32 @@ class ApiService {
             };
         }
     }
-    
+
     async syncPortfolio() {
         const response = await this.post('/api/portfolio/sync');
         return response.data;
     }
-    
+
     async getPortfolio() {
         const response = await this.get('/api/portfolio');
         return response.data;
     }
-    
+
     async getOrders(params = {}) {
         const response = await this.get('/api/orders', params);
         return response.data;
     }
-    
+
     async getMarketData(symbol) {
         const response = await this.get(`/api/market/quote/${symbol}`);
         return response.data;
     }
 }
 
-// Create global API instance
+// 🌍 Create global API instance
 window.API = new ApiService();
 
-// Export for use in other modules
+// 📦 Export for Node.js
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ApiService;
 }

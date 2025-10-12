@@ -14,100 +14,119 @@ router.use(authenticateToken);
 // @route   GET /api/user/dashboard
 // @access  Private
 router.get('/dashboard', asyncHandler(async (req, res) => {
+  console.log('📊 Dashboard request for user:', req.user._id);
   const userId = req.user._id;
 
-  // Get portfolio summary
-  const portfolio = await Portfolio.findOne({ userId });
-  const portfolioSummary = portfolio ? {
-    totalInvestedValue: portfolio.totalInvestedValue,
-    totalCurrentValue: portfolio.totalCurrentValue,
-    totalPnL: portfolio.totalPnL,
-    totalPnLPercentage: portfolio.totalPnLPercentage,
-    holdingsCount: portfolio.holdings.length,
-    lastSyncAt: portfolio.lastSyncAt
-  } : {
-    totalInvestedValue: 0,
-    totalCurrentValue: 0,
-    totalPnL: 0,
-    totalPnLPercentage: 0,
-    holdingsCount: 0,
-    lastSyncAt: null
-  };
+  try {
+    // Get portfolio summary
+    console.log('📈 Fetching portfolio data...');
+    const portfolio = await Portfolio.findOne({ userId });
+    const portfolioSummary = portfolio ? {
+      totalInvestedValue: portfolio.totalInvestedValue,
+      totalCurrentValue: portfolio.totalCurrentValue,
+      totalPnL: portfolio.totalPnL,
+      totalPnLPercentage: portfolio.totalPnLPercentage,
+      holdingsCount: portfolio.holdings.length,
+      lastSyncAt: portfolio.lastSyncAt
+    } : {
+      totalInvestedValue: 0,
+      totalCurrentValue: 0,
+      totalPnL: 0,
+      totalPnLPercentage: 0,
+      holdingsCount: 0,
+      lastSyncAt: null
+    };
 
-  // Get recent orders (last 10)
-  const recentOrders = await Order.find({ userId })
-    .sort({ orderTime: -1 })
-    .limit(10)
-    .select('symbol exchange orderType transactionType quantity price status orderTime');
+    console.log('✅ Portfolio data fetched:', portfolioSummary.holdingsCount, 'holdings');
 
-  // Get order statistics for current month
-  const currentMonth = new Date();
-  currentMonth.setDate(1);
-  currentMonth.setHours(0, 0, 0, 0);
+    // Get recent orders (last 10)
+    console.log('📋 Fetching recent orders...');
+    const recentOrders = await Order.find({ userId })
+      .sort({ orderTime: -1 })
+      .limit(10)
+      .select('symbol exchange orderType transactionType quantity price status orderTime');
 
-  const monthlyOrderStats = await Order.aggregate([
-    {
-      $match: {
-        userId: userId,
-        orderTime: { $gte: currentMonth }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalOrders: { $sum: 1 },
-        completedOrders: {
-          $sum: { $cond: [{ $eq: ['$status', 'COMPLETE'] }, 1, 0] }
-        },
-        totalValue: { $sum: '$executedValue' },
-        buyOrders: {
-          $sum: { $cond: [{ $eq: ['$transactionType', 'BUY'] }, 1, 0] }
-        },
-        sellOrders: {
-          $sum: { $cond: [{ $eq: ['$transactionType', 'SELL'] }, 1, 0] }
+    console.log('✅ Recent orders fetched:', recentOrders.length, 'orders');
+
+    // Get order statistics for current month
+    const currentMonth = new Date();
+    currentMonth.setDate(1);
+    currentMonth.setHours(0, 0, 0, 0);
+
+    const monthlyOrderStats = await Order.aggregate([
+      {
+        $match: {
+          userId: userId,
+          orderTime: { $gte: currentMonth }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalOrders: { $sum: 1 },
+          completedOrders: {
+            $sum: { $cond: [{ $eq: ['$status', 'COMPLETE'] }, 1, 0] }
+          },
+          totalValue: { $sum: '$executedValue' },
+          buyOrders: {
+            $sum: { $cond: [{ $eq: ['$transactionType', 'BUY'] }, 1, 0] }
+          },
+          sellOrders: {
+            $sum: { $cond: [{ $eq: ['$transactionType', 'SELL'] }, 1, 0] }
+          }
         }
       }
-    }
-  ]);
+    ]);
 
-  const orderStats = monthlyOrderStats[0] || {
-    totalOrders: 0,
-    completedOrders: 0,
-    totalValue: 0,
-    buyOrders: 0,
-    sellOrders: 0
-  };
+    const orderStats = monthlyOrderStats[0] || {
+      totalOrders: 0,
+      completedOrders: 0,
+      totalValue: 0,
+      buyOrders: 0,
+      sellOrders: 0
+    };
 
-  // Get top performing holdings
-  const topPerformers = portfolio && portfolio.holdings.length > 0 ? 
-    portfolio.getTopMovers(3) : { topGainers: [], topLosers: [] };
+    console.log('✅ Monthly stats fetched');
 
-  res.json({
-    success: true,
-    data: {
-      dashboard: {
-        user: {
-          name: req.user.name,
-          email: req.user.email,
-          clientCode: req.user.clientCode,
-          subscription: req.user.subscription,
-          lastLogin: req.user.lastLogin,
-          hasSmartApiToken: req.user.isSmartApiTokenValid()
-        },
-        portfolio: portfolioSummary,
-        orders: {
-          recent: recentOrders,
-          monthlyStats: orderStats
-        },
-        topPerformers,
-        alerts: {
-          portfolioSync: !portfolio || !portfolio.lastSyncAt || 
-            (new Date() - portfolio.lastSyncAt) > 24 * 60 * 60 * 1000,
-          smartApiConnection: !req.user.isSmartApiTokenValid()
+    // Get top performing holdings
+    const topPerformers = portfolio && portfolio.holdings.length > 0 ?
+      portfolio.getTopMovers(3) : { topGainers: [], topLosers: [] };
+
+    console.log('✅ Top performers calculated');
+
+    res.json({
+      success: true,
+      data: {
+        dashboard: {
+          user: {
+            name: req.user.name,
+            email: req.user.email,
+            clientCode: req.user.clientCode,
+            subscription: req.user.subscription,
+            lastLogin: req.user.lastLogin,
+            hasSmartApiToken: req.user.isSmartApiTokenValid()
+          },
+          portfolio: portfolioSummary,
+          orders: {
+            recent: recentOrders,
+            monthlyStats: orderStats
+          },
+          topPerformers,
+          alerts: {
+            portfolioSync: !portfolio || !portfolio.lastSyncAt ||
+              (new Date() - portfolio.lastSyncAt) > 24 * 60 * 60 * 1000,
+            smartApiConnection: !req.user.isSmartApiTokenValid()
+          }
         }
       }
-    }
-  });
+    });
+
+    console.log('✅ Dashboard response sent successfully');
+
+  } catch (error) {
+    console.error('❌ Dashboard error:', error);
+    throw new AppError('Error fetching dashboard data', 500, error);
+  }
 }));
 
 // @desc    Get user activity log
@@ -247,15 +266,15 @@ router.put('/preferences', asyncHandler(async (req, res) => {
 
   if (preferences.notifications && typeof preferences.notifications === 'object') {
     validPreferences.notifications = {};
-    
+
     if (typeof preferences.notifications.email === 'boolean') {
       validPreferences.notifications.email = preferences.notifications.email;
     }
-    
+
     if (typeof preferences.notifications.push === 'boolean') {
       validPreferences.notifications.push = preferences.notifications.push;
     }
-    
+
     if (typeof preferences.notifications.priceAlerts === 'boolean') {
       validPreferences.notifications.priceAlerts = preferences.notifications.priceAlerts;
     }
@@ -264,13 +283,13 @@ router.put('/preferences', asyncHandler(async (req, res) => {
   // Update user preferences
   const updatedUser = await User.findByIdAndUpdate(
     req.user._id,
-    { 
-      $set: { 
-        preferences: { 
-          ...req.user.preferences.toObject(), 
-          ...validPreferences 
-        } 
-      } 
+    {
+      $set: {
+        preferences: {
+          ...req.user.preferences.toObject(),
+          ...validPreferences
+        }
+      }
     },
     { new: true, runValidators: true }
   );
@@ -363,7 +382,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
   };
 
   // Calculate success rate
-  const successRate = orderStatsData.totalOrders > 0 ? 
+  const successRate = orderStatsData.totalOrders > 0 ?
     (orderStatsData.completedOrders / orderStatsData.totalOrders) * 100 : 0;
 
   // Get trading frequency (orders per day)
@@ -450,7 +469,7 @@ router.get('/export', asyncHandler(async (req, res) => {
 
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', `attachment; filename="smartapi-data-${Date.now()}.json"`);
-  
+
   res.json({
     success: true,
     data: exportData
